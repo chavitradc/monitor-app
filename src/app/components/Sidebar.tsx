@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Home, User, LogOut, Menu, X, Server } from 'lucide-react';
@@ -11,13 +11,7 @@ interface Map {
     name: string;
 }
 
-interface Session {
-    userId: string;
-    username: string;
-    firstname: string;
-    lastname: string;
-    isLoggedIn: boolean;
-}
+
 
 const navElements = [
     { title: "Overview", href: "/", icon: Home },
@@ -28,28 +22,12 @@ const navElements = [
 const Sidebar = () => {
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [maps, setMaps] = useState<Map[]>([]);
-    const [session, setSession] = useState<Session | null>(null);
+
     const pathname = usePathname();
     const router = useRouter();
     const noSidebarRoutes = ["/login", "/register", "/maps"];
 
-    useEffect(() => {
-        const checkSession = async () => {
-            try {
-                const response = await fetch('/api/auth/session');
-                const sessionData = await response.json();
-                setSession(sessionData);
 
-                if (!sessionData.isLoggedIn) {
-                    router.push('/login');
-                }
-            } catch (error) {
-                console.error('Session check failed:', error);
-            }
-        };
-
-        checkSession();
-    }, [router]);
 
     const fetchMaps = async () => {
         try {
@@ -84,7 +62,7 @@ const Sidebar = () => {
                 body: JSON.stringify({ name }),
             });
             if (response.ok) {
-                fetchMaps(); // Refresh maps after creation
+                fetchMaps();
             }
         } catch (error) {
             console.error('Failed to create map:', error);
@@ -100,18 +78,18 @@ const Sidebar = () => {
             });
 
             if (response.ok) {
-                // Redirect if the deleted map is currently active
+
                 if (pathname === `/maps/${mapId}`) {
                     router.push("/");
                 }
-                fetchMaps(); // Refresh maps after deletion
+                fetchMaps();
             }
         } catch (error) {
             console.error("Failed to delete map:", error);
         }
     };
 
-    if (noSidebarRoutes.includes(pathname) || !session?.isLoggedIn) {
+    if (noSidebarRoutes.includes(pathname)) {
         return null;
     }
 
