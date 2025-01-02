@@ -2,71 +2,68 @@ import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import Map from '@/models/Map';
 import { getSession } from '@/action';
+import { ObjectId } from 'mongodb';
 
-// Define the request body type
-interface CreateMarkerRequest {
-  latitude: number;
-  longitude: number;
-  description: string;
-}
+export async function GET(req: Request, { params }: { params: { mapId: string } }) {
+  await connectDB(); // เชื่อมต่อกับฐานข้อมูล
 
-export async function POST(
-  request: Request,
-  { params }: { params: { mapId: string } }
-) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { mapId } = await params; // ใช้ await เพื่อรับค่า params
+
+    // ตรวจสอบว่า mapId ไม่เป็น undefined และมีค่า
+    if (!mapId || typeof mapId !== 'string' || mapId.length !== 24 || !ObjectId.isValid(mapId)) {
+      return NextResponse.json({ error: 'Invalid map ID format' }, { status: 400 });
     }
 
-    const body = await request.json() as CreateMarkerRequest;
-    
-    // Validate request body
-    if (!body.latitude || !body.longitude || !body.description) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
+    const map = await Map.findOne({
+      _id: new ObjectId(mapId), // ใช้ ObjectId ในการค้นหาข้อมูล
+      userId: session.userId,
+    });
 
-    await connectDB();
-    
-    const map = await Map.findById(params.mapId);
     if (!map) {
       return NextResponse.json({ error: 'Map not found' }, { status: 404 });
     }
 
-    // Verify map ownership
-    if (map.userId.toString() !== session.userId) {
-      return NextResponse.json(
-        { error: 'Not authorized to modify this map' },
-        { status: 403 }
-      );
+    return NextResponse.json(map);
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Failed to fetch map' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request, { params }: { params: { mapId: string } }) {
+  await connectDB();
+
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const { mapId } = await params; 
+
+    
+    if (!mapId || typeof mapId !== 'string' || mapId.length !== 24 || !ObjectId.isValid(mapId)) {
+      return NextResponse.json({ error: 'Invalid map ID format' }, { status: 400 });
     }
 
-    map.markers.push({
-      latitude: body.latitude,
-      longitude: body.longitude,
-      description: body.description,
-      status: 'pending'
+    const map = await Map.findOneAndDelete({
+      _id: new ObjectId(mapId), 
+      userId: session.userId,
     });
 
-    await map.save();
-    return NextResponse.json(map, { status: 201 });
-  } catch (error) {
-    console.error('Error creating marker:', error);
-    
-    if (error instanceof Error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
+    if (!map) {
+      return NextResponse.json({ error: 'Map not found' }, { status: 404 });
     }
-    
-    return NextResponse.json(
-      { error: 'An unexpected error occurred' },
-      { status: 500 }
-    );
+
+    return NextResponse.json({ message: 'Map deleted' });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Failed to delete map' }, { status: 500 });
   }
 }

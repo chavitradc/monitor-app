@@ -104,12 +104,18 @@ export const register = async (formData: FormData): Promise<RegisterResponse> =>
 
 
   export const logout = async () => {
-    // Get the current session
     const session = await getIronSession(await cookies(), sessionOptions);
   
     // Destroy the session
     await session.destroy();
   
-   
-    redirect("/login"); 
+    // Clear any local cache or data from the frontend if needed
+    if (typeof window !== 'undefined') {
+      localStorage.clear();  // If you are storing any data in localStorage
+      sessionStorage.clear();  // If you are using sessionStorage
+    }
+    
+    // Redirect to login page
+    redirect("/login");
   };
+  

@@ -1,60 +1,199 @@
-import { MapContainer, TileLayer, Marker, useMap, ZoomControl } from 'react-leaflet';
+import { useState, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap, ZoomControl } from 'react-leaflet';
 import { Icon, LatLngLiteral } from 'leaflet';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css';
 import 'leaflet-defaulticon-compatibility';
-import { useState } from 'react';
 
-
-type MapType = "roadmap" | "satellite" | "hybrid" | "terrain"
-
-type MapLocation = LatLngLiteral & { id: string };
+type MapLocation = {
+    id: string;
+    lat: number;
+    lng: number;
+};
 
 type MapProps = {
-    center: LatLngLiteral;
+    center: { lat: number; lng: number };
     locations: MapLocation[];
+    mapId: string;
+};
+
+type MarkerData = {
+    _id?: string;
+    latitude: number;
+    longitude: number;
+    description?: string;
+    status: 'pending' | 'rescued';
 };
 
 const SelectedLocation: React.FC<{ center: LatLngLiteral }> = ({ center }) => {
     const map = useMap();
-    map.panTo(center, { animate: true });
+
+    useEffect(() => {
+        if (center && typeof center.lat === 'number' && typeof center.lng === 'number') {
+            map.panTo(center, { animate: true });
+        }
+    }, [center, map]);
+
     return null;
 };
 
-export const Map: React.FC<MapProps> = ({ center, locations }) => {
-    const [mapType, setMapType] = useState<MapType>("terrain")
+const ClickHandler = ({ onClick, isEnabled }: { onClick: (latlng: LatLngLiteral) => void, isEnabled: boolean }) => {
+    useMapEvents({
+        click: (e) => {
+            if (isEnabled) {
+                onClick(e.latlng);
+            }
+        },
+    });
+    return null;
+};
+
+export const Map: React.FC<MapProps> = ({ center, locations, mapId }) => {
+    const [mapType, setMapType] = useState<'roadmap' | 'satellite' | 'hybrid' | 'terrain'>('roadmap');
+    const [mapLocations, setMapLocations] = useState<MapLocation[]>([]);
     const [selectedLocation, setSelectedLocation] = useState<MapLocation | null>(null);
+    const [isAddingEnabled, setIsAddingEnabled] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
 
     const getUrl = () => {
-        const mapTypeUrls: Record<MapType, string> = {
-            roadmap: "http://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}",
-            satellite: "http://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}",
-            hybrid: "http://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}",
-            terrain: "http://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}"
-        }
-        return mapTypeUrls[mapType]
-    }
-
-    const defaultIcon = new Icon({ iconUrl: '../Images/Marker/default-icon.png', iconSize: [47, 55] });
-    const activeIcon = new Icon({ iconUrl: '../Images/Marker/active-icon.png', iconSize: [57, 55] });
-
-    const renderMarkers = () => {
-        return locations.map((location) => (
-            <Marker
-                key={location.id}
-                position={{ lat: location.lat, lng: location.lng }}
-                icon={location.id === selectedLocation?.id ? activeIcon : defaultIcon}
-                eventHandlers={{
-                    click: () => setSelectedLocation(location),
-                }}
-            />
-        ));
+        const mapTypeUrls: Record<'roadmap' | 'satellite' | 'hybrid' | 'terrain', string> = {
+            roadmap: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            hybrid: 'https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}.png',
+            terrain: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+        };
+        return mapTypeUrls[mapType];
     };
 
+    const defaultIcon = new Icon({
+        iconUrl: '../Images/Marker/default-icon.png',
+        iconSize: [47, 55],
+        iconAnchor: [23, 55] // Add this to fix marker positioning
+    });
+
+    const activeIcon = new Icon({
+        iconUrl: '../Images/Marker/active-icon.png',
+        iconSize: [57, 55],
+        iconAnchor: [28, 55] // Add this to fix marker positioning
+    });
+
+    useEffect(() => {
+        if (Array.isArray(locations)) {
+            setMapLocations(locations.filter(loc =>
+                loc &&
+                typeof loc.lat === 'number' &&
+                typeof loc.lng === 'number' &&
+                !isNaN(loc.lat) &&
+                !isNaN(loc.lng)
+            ));
+        }
+    }, [locations]);
+
+    const addMarker = async (latlng: LatLngLiteral) => {
+        if (!latlng || typeof latlng.lat !== 'number' || typeof latlng.lng !== 'number') {
+            toast.error('Invalid location coordinates');
+            return;
+        }
+
+        setIsLoading(true);
+
+        const newMarker: MarkerData = {
+            latitude: latlng.lat,
+            longitude: latlng.lng,
+            status: 'pending',
+            description: ''
+        };
+
+        try {
+            const response = await fetch(`/api/maps/${mapId}/markers`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(newMarker),
+            });
+
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to add marker');
+            }
+
+            const updatedMap = await response.json();
+            const updatedLocations = updatedMap.markers
+                .filter((marker: MarkerData) => marker && marker.latitude && marker.longitude)
+                .map((marker: MarkerData) => ({
+                    id: marker._id,
+                    lat: marker.latitude,
+                    lng: marker.longitude,
+                }));
+
+
+            setMapLocations(updatedLocations);
+            toast.success('Marker added successfully');
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to add marker');
+            console.error('Error adding marker:', err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+
+    const validCenter = center && typeof center.lat === 'number' && typeof center.lng === 'number'
+        ? center
+        : { lat: 13.7563, lng: 100.5018 };
+
     return (
-        <div className="w-full h-full  rounded-[5px] overflow-hidden">
+        <div className="w-full h-full rounded-[5px] overflow-hidden relative">
+            <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+            />
+
+            {/* Controls Container */}
+            <div className="absolute bottom-2 right-2 z-[1000] bg-white p-2 rounded-lg shadow-md space-y-2">
+                {/* Add Marker Toggle Button */}
+                <div className="flex justify-center mb-2">
+                    <button
+                        onClick={() => setIsAddingEnabled(!isAddingEnabled)}
+                        disabled={isLoading}
+                        className={`w-full px-3 py-1 rounded-md ${isAddingEnabled
+                            ? 'bg-green-600 text-white hover:bg-green-700'
+                            : 'bg-gray-200 text-black hover:bg-gray-300'
+                            } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                        {isLoading ? 'Adding Marker...' : isAddingEnabled ? 'Adding Enabled' : 'Adding Disabled'}
+                    </button>
+                </div>
+
+                {/* Map Type Selector */}
+                <div className="flex space-x-2">
+                    {['roadmap', 'satellite', 'hybrid', 'terrain'].map((type) => (
+                        <button
+                            key={type}
+                            onClick={() => setMapType(type as 'roadmap' | 'satellite' | 'hybrid' | 'terrain')}
+                            className={`px-3 py-1 rounded-md ${mapType === type
+                                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                : 'bg-gray-200 text-black hover:bg-gray-300'
+                                }`}
+                        >
+                            {type}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
             <MapContainer
-                center={center}
+                center={validCenter}
                 zoom={6}
                 minZoom={4}
                 zoomControl={false}
@@ -62,10 +201,25 @@ export const Map: React.FC<MapProps> = ({ center, locations }) => {
                 className="w-full h-full"
             >
                 <TileLayer url={getUrl()} />
+                <ClickHandler onClick={addMarker} isEnabled={isAddingEnabled} />
                 {selectedLocation && <SelectedLocation center={selectedLocation} />}
-                {renderMarkers()}
+                {mapLocations.map((location) => {
+                    const markerId = typeof location.id === 'string' ? location.id : String(location.id);
+                    return (
+                        <Marker
+                            key={markerId}
+                            position={{ lat: location.lat, lng: location.lng }}
+                            icon={markerId === selectedLocation?.id ? activeIcon : defaultIcon}
+                            eventHandlers={{
+                                click: () => setSelectedLocation(location),
+                            }}
+                        />
+                    );
+                })}
                 <ZoomControl position="topright" />
             </MapContainer>
         </div>
     );
 };
+
+export default Map;
