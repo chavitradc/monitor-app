@@ -8,7 +8,7 @@ export default function Home() {
   return (
 
 
-    <div>Home</div>
+    <div className="bg-gray-800 min-h-screen text-gray-100">Home</div>
 
 
   );

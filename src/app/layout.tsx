@@ -30,7 +30,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} flex `}
       >
         <Sidebar />
-        <div className="flex-grow bg-gray-800">
+        <div className="flex-grow ">
           {children}
         </div>
       </body>

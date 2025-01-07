@@ -11,6 +11,7 @@ type MapLocation = {
     id: string;
     lat: number;
     lng: number;
+    shouldZoom?: boolean;
 };
 
 type MapProps = {
@@ -27,14 +28,19 @@ type MarkerData = {
     status: 'pending' | 'rescued';
 };
 
-const SelectedLocation: React.FC<{ center: LatLngLiteral }> = ({ center }) => {
+type SelectedLocationProps = {
+    center: LatLngLiteral;
+    shouldZoom?: boolean;
+};
+
+const SelectedLocation: React.FC<SelectedLocationProps> = ({ center, shouldZoom = true }) => {
     const map = useMap();
 
     useEffect(() => {
         if (center && typeof center.lat === 'number' && typeof center.lng === 'number') {
-            map.panTo(center, { animate: true });
+            map.setView(center, shouldZoom ? 15 : map.getZoom(), { animate: true });
         }
-    }, [center, map]);
+    }, [center, map, shouldZoom]);
 
     return null;
 };
@@ -50,12 +56,86 @@ const ClickHandler = ({ onClick, isEnabled }: { onClick: (latlng: LatLngLiteral)
     return null;
 };
 
+const CoordinatesSearch: React.FC<{
+    onSearch: (lat: number, lng: number, shouldZoom: boolean) => void
+}> = ({ onSearch }) => {
+    const [lat, setLat] = useState('');
+    const [lng, setLng] = useState('');
+
+    const validateCoordinates = (): boolean => {
+        if (!lat || !lng) {
+            toast.error('Please enter both latitude and longitude');
+            return false;
+        }
+
+        const latitude = parseFloat(lat);
+        const longitude = parseFloat(lng);
+
+        if (isNaN(latitude) || isNaN(longitude)) {
+            toast.error('Invalid coordinate format');
+            return false;
+        }
+
+        if (latitude < -90 || latitude > 90) {
+            toast.error('Latitude must be between -90 and 90');
+            return false;
+        }
+
+        if (longitude < -180 || longitude > 180) {
+            toast.error('Longitude must be between -180 and 180');
+            return false;
+        }
+
+        return true;
+    };
+
+    const handleSearch = () => {
+        if (validateCoordinates()) {
+            onSearch(parseFloat(lat), parseFloat(lng), true);
+            toast.success('Location found!');
+        }
+    };
+
+    const handleKeyPress = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') handleSearch();
+    };
+
+    return (
+        <div className="absolute top-4 right-4 z-[1000] flex gap-2">
+            <input
+                value={lat}
+                onChange={(e) => setLat(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Latitude (-90 to 90)"
+                className="px-3 py-2 border rounded-md bg-zinc-50 border-gray-300"
+            />
+            <input
+                value={lng}
+                onChange={(e) => setLng(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Longitude (-180 to 180)"
+                className="px-3 py-2 border rounded-md bg-zinc-50 border-gray-300"
+            />
+            <button
+                onClick={handleSearch}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+                Search
+            </button>
+        </div>
+    );
+};
+
 export const Map: React.FC<MapProps> = ({ center, locations, mapId }) => {
     const [mapType, setMapType] = useState<'roadmap' | 'satellite' | 'hybrid' | 'terrain'>('roadmap');
     const [mapLocations, setMapLocations] = useState<MapLocation[]>([]);
     const [selectedLocation, setSelectedLocation] = useState<MapLocation | null>(null);
     const [isAddingEnabled, setIsAddingEnabled] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+
+    const handleCoordinateSearch = (lat: number, lng: number, shouldZoom: boolean) => {
+        setSelectedLocation({ id: 'search', lat, lng, shouldZoom });
+    };
 
     const getUrl = () => {
         const mapTypeUrls: Record<'roadmap' | 'satellite' | 'hybrid' | 'terrain', string> = {
@@ -70,13 +150,13 @@ export const Map: React.FC<MapProps> = ({ center, locations, mapId }) => {
     const defaultIcon = new Icon({
         iconUrl: '../Images/Marker/default-icon.png',
         iconSize: [47, 55],
-        iconAnchor: [23, 55] // Add this to fix marker positioning
+        iconAnchor: [23, 55]
     });
 
     const activeIcon = new Icon({
         iconUrl: '../Images/Marker/active-icon.png',
         iconSize: [57, 55],
-        iconAnchor: [28, 55] // Add this to fix marker positioning
+        iconAnchor: [28, 55]
     });
 
     useEffect(() => {
@@ -129,7 +209,6 @@ export const Map: React.FC<MapProps> = ({ center, locations, mapId }) => {
                     lng: marker.longitude,
                 }));
 
-
             setMapLocations(updatedLocations);
             toast.success('Marker added successfully');
         } catch (err) {
@@ -139,7 +218,6 @@ export const Map: React.FC<MapProps> = ({ center, locations, mapId }) => {
             setIsLoading(false);
         }
     };
-
 
     const validCenter = center && typeof center.lat === 'number' && typeof center.lng === 'number'
         ? center
@@ -158,10 +236,8 @@ export const Map: React.FC<MapProps> = ({ center, locations, mapId }) => {
                 draggable
                 pauseOnHover
             />
-
-            {/* Controls Container */}
+            <CoordinatesSearch onSearch={handleCoordinateSearch} />
             <div className="absolute bottom-2 right-2 z-[1000] bg-white p-2 rounded-lg shadow-md space-y-2">
-                {/* Add Marker Toggle Button */}
                 <div className="flex justify-center mb-2">
                     <button
                         onClick={() => setIsAddingEnabled(!isAddingEnabled)}
@@ -175,7 +251,6 @@ export const Map: React.FC<MapProps> = ({ center, locations, mapId }) => {
                     </button>
                 </div>
 
-                {/* Map Type Selector */}
                 <div className="flex space-x-2">
                     {['roadmap', 'satellite', 'hybrid', 'terrain'].map((type) => (
                         <button
@@ -202,7 +277,7 @@ export const Map: React.FC<MapProps> = ({ center, locations, mapId }) => {
             >
                 <TileLayer url={getUrl()} />
                 <ClickHandler onClick={addMarker} isEnabled={isAddingEnabled} />
-                {selectedLocation && <SelectedLocation center={selectedLocation} />}
+                {selectedLocation && <SelectedLocation center={selectedLocation} shouldZoom={selectedLocation.shouldZoom} />}
                 {mapLocations.map((location) => {
                     const markerId = typeof location.id === 'string' ? location.id : String(location.id);
                     return (
@@ -216,7 +291,7 @@ export const Map: React.FC<MapProps> = ({ center, locations, mapId }) => {
                         />
                     );
                 })}
-                <ZoomControl position="topright" />
+                <ZoomControl position="topleft" />
             </MapContainer>
         </div>
     );

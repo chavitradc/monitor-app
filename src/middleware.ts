@@ -1,13 +1,11 @@
-import { type NextRequest } from "next/server";
-import { cookies } from "next/headers";
 import { getIronSession } from "iron-session";
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { SessionData, sessionOptions } from "@/lib/type";
-import { NextResponse } from "next/server";  // Import NextResponse
 
 export async function middleware(request: NextRequest) {
   const session = await getIronSession<SessionData>(await cookies(), sessionOptions);
 
-  // Paths that are public and should be accessible without a login
   const publicPaths = ['/login', '/register'];
   const isPublicPath = publicPaths.includes(request.nextUrl.pathname);
 

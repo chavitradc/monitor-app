@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import LoadingSpinner from "@/app/components/LoadingMap";
+import ErrorDisplay from "@/app/components/ErrorMap";
 
 
 
@@ -52,7 +54,7 @@ export default function MapDisplay({ params }: { params: Promise<{ mapId: string
                 }
                 const data = await response.json();
                 if (data.error) {
-                    setError(data.error); // ใช้ข้อผิดพลาดจาก API
+                    setError(data.error);
                 } else {
                     setMapData(data);
                 }
@@ -67,13 +69,13 @@ export default function MapDisplay({ params }: { params: Promise<{ mapId: string
         fetchMapData();
     }, [mapId]);
 
-    if (isLoading) return <div>Loading...</div>;
-    if (error) return <div>{error}</div>;
-    if (!mapData) return <div>Map Not Found</div>;
+    if (isLoading) return <LoadingSpinner />;
+    if (error) return <ErrorDisplay message={error} />;
+    if (!mapData) return <ErrorDisplay title="Not Found" message="Map Not Found" />;
 
     const center = mapData.markers.length > 0
         ? { lat: mapData.markers[0].latitude, lng: mapData.markers[0].longitude }
-        : { lat: 13.7563, lng: 100.5018 }; // Default center (Bangkok)
+        : { lat: 13.7563, lng: 100.5018 };
 
     const locations = mapData.markers.map((marker) => ({
         id: marker._id,
